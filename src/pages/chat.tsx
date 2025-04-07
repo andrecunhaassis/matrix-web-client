@@ -200,6 +200,17 @@ const ChatUI: React.FC = () => {
         const eventType = event.getType();
         const sender = event.getSender();
         const eventId = event.getId();
+        const content = event.getContent();
+
+        // Debug log
+        console.log('Message event:', {
+            eventId,
+            eventType,
+            msgtype: content?.msgtype,
+            hasFailedMedia: !!content['fi.mau.whatsapp.failed_media'],
+            body: content?.body,
+            contentKeys: content ? Object.keys(content) : []
+        });
 
         const isCurrentUser = sender === client?.getUserId();
         const isExactWhatsappMatch = whatsappIdentifier && sender === whatsappIdentifier;
@@ -209,6 +220,95 @@ const ChatUI: React.FC = () => {
             sender.includes(userPhoneNumber);
         const isUserMessage = isCurrentUser || isExactWhatsappMatch || isWhatsappWithUserNumber;
         const isGroupChat = selectedRoom && selectedRoom.getJoinedMemberCount() > 4;
+
+        // Handle WhatsApp failed media files first
+        if (content && content['fi.mau.whatsapp.failed_media']) {
+            const failedMedia = content['fi.mau.whatsapp.failed_media'];
+            const fileContent = failedMedia.content || {};
+            const fileName = fileContent.body || fileContent.filename || 'Arquivo';
+            const fileInfo = fileContent.info || {};
+            const fileSize = fileInfo.size ? Math.round(fileInfo.size / 1024) + ' KB' : 'Tamanho desconhecido';
+            const mimeType = fileInfo.mimetype || '';
+
+            // Determine icon based on mime type
+            let iconColor = 'bg-blue-500';
+            if (mimeType.includes('pdf')) {
+                iconColor = 'bg-red-500';
+            } else if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) {
+                iconColor = 'bg-green-500';
+            } else if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
+                iconColor = 'bg-orange-500';
+            }
+
+            const avatarUrl = getUserAvatarUrl(sender);
+            const shouldShowAvatar = !isUserMessage && isGroupChat;
+            const avatarElement = shouldShowAvatar ? (
+                <div className="flex-shrink-0 mr-2">
+                    {avatarUrl ? (
+                        <img
+                            src={avatarUrl || '/default-avatar.png'}
+                            alt={sender}
+                            className="w-8 h-8 rounded-full"
+                            onError={(e) => {
+                                e.currentTarget.onerror = null;
+                                e.currentTarget.src = '/default-avatar.png';
+                            }}
+                        />
+                    ) : (
+                        <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white"
+                            style={{ backgroundColor: getRoomAvatarUrl(sender) }}
+                        >
+                            {sender.substring(0, 2)}
+                        </div>
+                    )}
+                </div>
+            ) : null;
+
+            const shouldShowUsername = !isUserMessage && isGroupChat;
+            let displayName = sender;
+            if (isExactWhatsappMatch || isWhatsappWithUserNumber) {
+                displayName = "Você";
+            } else if (isCurrentUser) {
+                displayName = "Você";
+            } else if (sender.includes('@whatsapp_')) {
+                const phoneMatch = sender.match(/@whatsapp_(\d+):/);
+                if (phoneMatch && phoneMatch[1]) {
+                    displayName = `WhatsApp (+${phoneMatch[1]})`;
+                }
+            }
+
+            return (
+                <div
+                    ref={(el) => { messageRefs.current[eventId] = el; }}
+                    className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} my-1 ${highlightedMessageId === eventId ? 'animate-pulse bg-yellow-100 dark:bg-yellow-900 rounded-xl' : ''}`}
+                >
+                    {avatarElement}
+                    <div className={`w-fit min-w-14 max-w-lg px-3 pt-2 pb-1 rounded-lg border border-gray-200 dark:border-gray-700 
+                        ${isUserMessage ? 'bg-green-100 dark:bg-green-900 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'}`}>
+                        {shouldShowUsername && <p className="text-xs font-bold">{displayName}</p>}
+                        <div className="file-container">
+                            <div className="flex items-center p-2 bg-gray-200 dark:bg-gray-700 rounded-lg mb-2">
+                                <div className={`mr-2 ${iconColor} text-white p-2 rounded`}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <div className="text-sm font-medium truncate">{fileName}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">{fileSize}</div>
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                                {content.body || "Arquivo não disponível no telefone. Solicite novamente pelo WhatsApp."}
+                            </p>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 text-right">{formatTime(event.getTs())}</p>
+                        {renderReactions(eventId)}
+                    </div>
+                </div>
+            );
+        }
 
         if (eventType === 'm.room.message' || eventType === 'm.sticker') {
             if (isDeleted(event)) {
@@ -393,6 +493,83 @@ const ChatUI: React.FC = () => {
                                 </div>
                             ) : (
                                 <p className="text-red-500">Não foi possível carregar o áudio</p>
+                            )}
+                            <p className="text-xs text-gray-500 dark:text-gray-400 text-right">{formatTime(event.getTs())}</p>
+                            {renderReactions(eventId)}
+                        </div>
+                    </div>
+                );
+            } else if (messageType === 'm.video') {
+                const videoUrl = getMxcUrl(content.url);
+                return (
+                    <div
+                        ref={(el) => { messageRefs.current[eventId] = el; }}
+                        className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} my-1 ${highlightedMessageId === eventId ? 'animate-pulse bg-yellow-100 dark:bg-yellow-900 rounded-xl' : ''}`}
+                    >
+                        {avatarElement}
+                        <div className={`w-fit min-w-14 max-w-lg px-3 pt-2 pb-1 rounded-lg border border-gray-200 dark:border-gray-700 
+                            ${isUserMessage ? 'bg-green-100 dark:bg-green-900 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'}`}>
+                            {shouldShowUsername && <p className="text-xs font-bold">{displayName}</p>}
+                            {replyPreview}
+                            {videoUrl ? (
+                                <div className="video-container">
+                                    <video
+                                        controls
+                                        src={videoUrl}
+                                        className="max-w-full rounded mb-2"
+                                        style={{ maxHeight: '400px' }}
+                                        preload="metadata"
+                                    >
+                                        Seu navegador não suporta o elemento de vídeo.
+                                    </video>
+                                    {content.body && <p className="text-sm mb-1">{content.body}</p>}
+                                </div>
+                            ) : (
+                                <p className="text-red-500">Não foi possível carregar o vídeo</p>
+                            )}
+                            <p className="text-xs text-gray-500 dark:text-gray-400 text-right">{formatTime(event.getTs())}</p>
+                            {renderReactions(eventId)}
+                        </div>
+                    </div>
+                );
+            } else if (messageType === 'm.file') {
+                const fileUrl = getMxcUrl(content.url);
+                const fileName = content.body || 'Arquivo';
+                const fileInfo = content.info || {};
+                const fileSize = fileInfo.size ? Math.round(fileInfo.size / 1024) + ' KB' : 'Tamanho desconhecido';
+
+                return (
+                    <div
+                        ref={(el) => { messageRefs.current[eventId] = el; }}
+                        className={`flex ${isUserMessage ? 'justify-end' : 'justify-start'} my-1 ${highlightedMessageId === eventId ? 'animate-pulse bg-yellow-100 dark:bg-yellow-900 rounded-xl' : ''}`}
+                    >
+                        {avatarElement}
+                        <div className={`w-fit min-w-14 max-w-lg px-3 pt-2 pb-1 rounded-lg border border-gray-200 dark:border-gray-700 
+                            ${isUserMessage ? 'bg-green-100 dark:bg-green-900 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100'}`}>
+                            {shouldShowUsername && <p className="text-xs font-bold">{displayName}</p>}
+                            {replyPreview}
+                            {fileUrl ? (
+                                <div className="file-container">
+                                    <a
+                                        href={fileUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex items-center p-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 mb-2"
+                                        download={fileName}
+                                    >
+                                        <div className="mr-2 bg-blue-500 text-white p-2 rounded">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                            </svg>
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <div className="text-sm font-medium truncate">{fileName}</div>
+                                            <div className="text-xs text-gray-500 dark:text-gray-400">{fileSize}</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            ) : (
+                                <p className="text-red-500">Não foi possível carregar o arquivo</p>
                             )}
                             <p className="text-xs text-gray-500 dark:text-gray-400 text-right">{formatTime(event.getTs())}</p>
                             {renderReactions(eventId)}
