@@ -35,10 +35,8 @@ const ChatUI: React.FC = () => {
     const [showEmojiButton, setShowEmojiButton] = useState(false);
     const [expandedImage, setExpandedImage] = useState<string | null>(null);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
-    const [unreadMessages, setUnreadMessages] = useState<{ [roomId: string]: number }>({});
-    const initialLoadComplete = useRef<boolean>(false);
-    const [lastMessageTimestamps, setLastMessageTimestamps] = useState<{ [roomId: string]: number }>({});
 
+    // Function to check if a room contains priority senders
     const isPriorityRoom = (room: any) => {
         const priorityNumbers = ['5511935019634', '5511935026853'];
         const members = room.getJoinedMembers();
@@ -48,6 +46,7 @@ const ChatUI: React.FC = () => {
         });
     };
 
+    // Filter and sort rooms based on search term and priority
     const filteredRooms = rooms
         .filter(room => {
             const roomName = room.name || room.roomId;
@@ -64,95 +63,8 @@ const ChatUI: React.FC = () => {
         });
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView();
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
-
-    const formatLastMessageTime = (timestamp: number) => {
-        if (!timestamp) return '';
-
-        const date = new Date(timestamp);
-        const now = new Date();
-        const isToday = date.getDate() === now.getDate() &&
-            date.getMonth() === now.getMonth() &&
-            date.getFullYear() === now.getFullYear();
-
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        const isYesterday = date.getDate() === yesterday.getDate() &&
-            date.getMonth() === yesterday.getMonth() &&
-            date.getFullYear() === yesterday.getFullYear();
-
-        if (isToday) {
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-        } else if (isYesterday) {
-            return 'Ontem';
-        } else {
-            return date.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
-        }
-    };
-
-    useEffect(() => {
-        if (!client) return;
-
-        const updateLastMessageTimestamps = () => {
-            const timestamps: { [roomId: string]: number } = {};
-
-            rooms.forEach(room => {
-                const timeline = room.getLiveTimeline().getEvents();
-                if (timeline.length > 0) {
-                    const latestMessage = timeline[timeline.length - 1];
-                    timestamps[room.roomId] = latestMessage.getTs();
-                }
-            });
-
-            setLastMessageTimestamps(timestamps);
-        };
-
-        updateLastMessageTimestamps();
-
-        setTimeout(() => {
-            initialLoadComplete.current = true;
-            console.log("Initial load complete, now tracking new messages");
-        }, 5000);
-
-        const handleNewMessage = (event: any, room: any) => {
-            if (!initialLoadComplete.current) return;
-
-            setLastMessageTimestamps(prev => ({
-                ...prev,
-                [room.roomId]: event.getTs()
-            }));
-
-            const sender = event.getSender();
-            const isCurrentUser = sender === client.getUserId();
-            const isWhatsappUser = whatsappIdentifier &&
-                (sender === whatsappIdentifier ||
-                    (userPhoneNumber && sender.includes('@whatsapp_') && sender.includes(userPhoneNumber)));
-
-            if (!isCurrentUser && !isWhatsappUser && (!selectedRoom || room.roomId !== selectedRoom.roomId)) {
-                setUnreadMessages(prev => ({
-                    ...prev,
-                    [room.roomId]: (prev[room.roomId] || 0) + 1
-                }));
-            }
-        };
-
-        client.on('Room.timeline', handleNewMessage);
-
-        return () => {
-            client.removeListener('Room.timeline', handleNewMessage);
-        };
-    }, [client, selectedRoom, whatsappIdentifier, userPhoneNumber, rooms]);
-
-    const handleRoomSelectWithClearUnread = (room: any) => {
-        if (room) {
-            setUnreadMessages(prev => ({
-                ...prev,
-                [room.roomId]: 0
-            }));
-        }
-        handleRoomSelect(room);
-    };
 
     const handleTemplateClick = async (templateText: string) => {
         if (client && selectedRoom) {
@@ -290,6 +202,16 @@ const ChatUI: React.FC = () => {
         const eventId = event.getId();
         const content = event.getContent();
 
+        // Debug log
+        console.log('Message event:', {
+            eventId,
+            eventType,
+            msgtype: content?.msgtype,
+            hasFailedMedia: !!content['fi.mau.whatsapp.failed_media'],
+            body: content?.body,
+            contentKeys: content ? Object.keys(content) : []
+        });
+
         const isCurrentUser = sender === client?.getUserId();
         const isExactWhatsappMatch = whatsappIdentifier && sender === whatsappIdentifier;
         const isWhatsappWithUserNumber =
@@ -299,6 +221,7 @@ const ChatUI: React.FC = () => {
         const isUserMessage = isCurrentUser || isExactWhatsappMatch || isWhatsappWithUserNumber;
         const isGroupChat = selectedRoom && selectedRoom.getJoinedMemberCount() > 4;
 
+        // Handle WhatsApp failed media files first
         if (content && content['fi.mau.whatsapp.failed_media']) {
             const failedMedia = content['fi.mau.whatsapp.failed_media'];
             const fileContent = failedMedia.content || {};
@@ -307,6 +230,7 @@ const ChatUI: React.FC = () => {
             const fileSize = fileInfo.size ? Math.round(fileInfo.size / 1024) + ' KB' : 'Tamanho desconhecido';
             const mimeType = fileInfo.mimetype || '';
 
+            // Determine icon based on mime type
             let iconColor = 'bg-blue-500';
             if (mimeType.includes('pdf')) {
                 iconColor = 'bg-red-500';
@@ -406,8 +330,10 @@ const ChatUI: React.FC = () => {
 
             let displayName = sender;
             if (isExactWhatsappMatch || isWhatsappWithUserNumber) {
+                // via WhatsApp
                 displayName = "Você";
             } else if (isCurrentUser) {
+                // via Matrix
                 displayName = "Você";
             } else if (sender.includes('@whatsapp_')) {
                 const phoneMatch = sender.match(/@whatsapp_(\d+):/);
@@ -672,6 +598,7 @@ const ChatUI: React.FC = () => {
     };
 
     const handleCloseChat = () => {
+        // Only close chat if a room is selected to avoid errors
         if (selectedRoom) {
             handleRoomSelect(null);
         }
@@ -702,7 +629,7 @@ const ChatUI: React.FC = () => {
     }
 
     return (
-        <div className="flex h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 dark:border-gray-800">
+        <div className="flex h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-2 dark:border-gray-800 rounded-md">
             <div className="w-1/4 border-r border-gray-200 dark:border-gray-800 flex flex-col">
                 <div className="p-3 bg-gray-100 dark:bg-gray-800 flex justify-between items-center">
                     <div className="font-bold">Conversas</div>
@@ -736,56 +663,41 @@ const ChatUI: React.FC = () => {
                                 const roomName = room.name || room.roomId;
                                 const lastMessage = getLastMessage(room);
                                 const isPinned = isPriorityRoom(room);
-                                const unreadCount = unreadMessages[room.roomId] || 0;
-                                const lastMessageTime = formatLastMessageTime(lastMessageTimestamps[room.roomId]);
-
                                 return (
                                     <div
                                         key={room.roomId}
-                                        onClick={() => handleRoomSelectWithClearUnread(room)}
+                                        onClick={() => handleRoomSelect(room)}
                                         className={`flex p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 ${selectedRoom?.roomId === room.roomId ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
                                     >
-                                        <div className="relative">
-                                            {avatarUrl ? (
-                                                <img
-                                                    src={avatarUrl || '/default-avatar.png'}
-                                                    alt={roomName}
-                                                    className="w-12 h-12 rounded-full mr-3 object-cover"
-                                                    onError={(e) => {
-                                                        e.currentTarget.onerror = null;
-                                                        e.currentTarget.src = '/default-avatar.png';
-                                                    }}
-                                                />
-                                            ) : (
-                                                <div
-                                                    className="w-12 h-12 rounded-full mr-3 flex items-center justify-center text-white"
-                                                    style={{ backgroundColor: getRoomAvatarUrl(roomName) }}
-                                                >
-                                                    {roomName.substring(0, 2).toUpperCase()}
-                                                </div>
-                                            )}
-                                        </div>
+                                        {avatarUrl ? (
+                                            <img
+                                                src={avatarUrl || '/default-avatar.png'}
+                                                alt={roomName}
+                                                className="w-12 h-12 rounded-full mr-3 object-cover"
+                                                onError={(e) => {
+                                                    e.currentTarget.onerror = null;
+                                                    e.currentTarget.src = '/default-avatar.png';
+                                                }}
+                                            />
+                                        ) : (
+                                            <div
+                                                className="w-12 h-12 rounded-full mr-3 flex items-center justify-center text-white"
+                                                style={{ backgroundColor: getRoomAvatarUrl(roomName) }}
+                                            >
+                                                {roomName.substring(0, 2).toUpperCase()}
+                                            </div>
+                                        )}
                                         <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-center">
                                                 <div className="flex items-center">
-                                                    <span className={`font-medium truncate ${unreadCount > 0 ? 'font-bold' : ''}`}>{roomName}</span>
+                                                    <span className="font-medium truncate">{roomName}</span>
                                                     {isPinned && (
                                                         <Pin size={14} className="ml-1 text-blue-500 rotate-45" />
                                                     )}
                                                 </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">
-                                                    {lastMessageTime}
-                                                </div>
                                             </div>
-                                            <div className="flex justify-between items-center mt-1">
-                                                <p className={`text-sm ${unreadCount > 0 ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-500 dark:text-gray-400'} truncate flex-1`}>
-                                                    {lastMessage || 'Nenhuma mensagem'}
-                                                </p>
-                                                {unreadCount > 0 && (
-                                                    <div className="ml-2 bg-green-500 text-white rounded-full min-w-5 h-5 flex items-center justify-center text-xs font-bold px-1.5 shadow-sm">
-                                                        {unreadCount > 99 ? '99+' : unreadCount}
-                                                    </div>
-                                                )}
+                                            <div className="flex justify-between mt-1">
+                                                <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{lastMessage || 'Nenhuma mensagem'}</p>
                                             </div>
                                         </div>
                                     </div>
