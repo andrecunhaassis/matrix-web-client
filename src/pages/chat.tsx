@@ -32,7 +32,6 @@ const ChatUI: React.FC = () => {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const messageRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
     const [searchTerm, setSearchTerm] = useState('');
-    const [showEmojiButton, setShowEmojiButton] = useState(false);
     const [expandedImage, setExpandedImage] = useState<string | null>(null);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [unreadMessages, setUnreadMessages] = useState<{ [roomId: string]: number }>({});
@@ -738,6 +737,10 @@ const ChatUI: React.FC = () => {
                                 const isPinned = isPriorityRoom(room);
                                 const unreadCount = unreadMessages[room.roomId] || 0;
                                 const lastMessageTime = formatLastMessageTime(lastMessageTimestamps[room.roomId]);
+                                const totalParticipants = room.getJoinedMemberCount();
+
+                                if (totalParticipants > 4) return null;
+                                if (roomName === 'WhatsApp bridge bot') return null;
 
                                 return (
                                     <div
@@ -779,7 +782,7 @@ const ChatUI: React.FC = () => {
                                             </div>
                                             <div className="flex justify-between items-center mt-1">
                                                 <p className={`text-sm ${unreadCount > 0 ? 'text-gray-900 dark:text-gray-100 font-medium' : 'text-gray-500 dark:text-gray-400'} truncate flex-1`}>
-                                                    {lastMessage || 'Nenhuma mensagem'}
+                                                    {lastMessage || ''}
                                                 </p>
                                                 {unreadCount > 0 && (
                                                     <div className="ml-2 bg-green-500 text-white rounded-full min-w-5 h-5 flex items-center justify-center text-xs font-bold px-1.5 shadow-sm">
@@ -857,7 +860,7 @@ const ChatUI: React.FC = () => {
 
                     <div className="p-3 bg-gray-100 dark:bg-gray-800 flex items-center">
                         <button className="focus:outline-none mr-2">
-                            <Smile size={24} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
+                            <Smile size={24} className="text-gray-500 dark:text-gray-400 cursor-not-allowed" />
                         </button>
 
                         <div className="flex-1">
@@ -883,7 +886,7 @@ const ChatUI: React.FC = () => {
                             {newMessage.trim() ? (
                                 <SendHorizonal size={24} className="text-green-500 cursor-pointer" />
                             ) : (
-                                <Mic size={24} className="text-gray-500 dark:text-gray-400 cursor-pointer" />
+                                <Mic size={24} className="text-gray-500 dark:text-gray-400 cursor-not-allowed" />
                             )}
                         </button>
                     </div>
