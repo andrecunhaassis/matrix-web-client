@@ -773,7 +773,7 @@ const ChatUI: React.FC = () => {
                                                 <div className="flex items-center">
                                                     <span className={`font-medium truncate ${unreadCount > 0 ? 'font-bold' : ''}`}>{roomName}</span>
                                                     {isPinned && (
-                                                        <Pin size={14} className="ml-1 text-blue-500 rotate-45" />
+                                                        <Pin size={14} className="ml-2 text-orange-500 rotate-45" fill='red' />
                                                     )}
                                                 </div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400">
