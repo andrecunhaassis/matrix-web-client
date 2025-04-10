@@ -493,7 +493,7 @@ const ChatUI: React.FC = () => {
                                         <img
                                             src={imageUrl || '/default-image.jpg'}
                                             alt={content.body || 'Image'}
-                                            className="max-w-[400px] max-h-[400px] object-contain rounded mb-2"
+                                            className="w-full max-h-[400px] object-contain rounded mb-2"
                                             onError={(e) => {
                                                 e.currentTarget.onerror = null;
                                                 e.currentTarget.src = '/default-image.jpg';

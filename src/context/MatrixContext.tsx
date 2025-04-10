@@ -326,7 +326,7 @@ export const MatrixProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         loadRoomMessages(room);
         if (client) {
             try {
-                await client.scrollback(room, 200);
+                await client.scrollback(room, 150);
                 loadRoomMessages(room);
             } catch (error) {
                 console.error('Erro ao paginar mensagens:', error);
